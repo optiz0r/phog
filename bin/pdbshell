@@ -1,0 +1,49 @@
+#!/usr/bin/python
+
+from __future__ import print_function
+
+import readline
+import code
+import sys
+
+from optparse import OptionParser
+from PuppetDB import PuppetDB
+
+def parse_options():
+    parser = OptionParser()
+
+    parser.add_option(u"-H",
+                      u"--host",
+                      dest=u"host",
+                      help=u"Specify the PuppetDB host to query")
+
+    parser.add_option(u"-c",
+                      u"--cert",
+                      dest=u"cert",
+                      help=u"Specify the client cert to use when talking to PuppetDB")
+
+    parser.add_option(u"-k",
+                      u"--key",
+                      dest=u"key",
+                      help=u"Specify the client private key to use when talking to PuppetDB")
+
+    (options, args) = parser.parse_args()
+    return (options, args)
+
+def main():
+    (opts, args) = parse_options()
+
+    if sys.stdout.encoding is None:
+        sys.stdout = codecs.getwriter(locale.getpreferredencoding())(sys.stdout, 'strict')
+    if sys.stderr.encoding is None:
+        sys.stderr = codecs.getwriter(locale.getpreferredencoding())(sys.stderr, 'strict')
+
+    p = PuppetDB(host=opts.host, cert=opts.cert, key=opts.key)
+
+    shell = code.InteractiveConsole(locals())
+    shell.interact(banner='')
+
+if __name__ == u'__main__':
+    main()
+
+

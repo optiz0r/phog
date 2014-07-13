@@ -1,0 +1,139 @@
+#!/usr/bin/python -tt
+
+from __future__ import print_function
+
+import codecs
+import locale
+import os
+import re
+import sys
+from optparse import OptionParser
+from PuppetDB import PuppetDB
+
+_VALID_OUTPUT_FORMATS = [u'tab',u'csv']
+_VALID_FIELDS = [
+    u'certname',
+    u'name',
+    u'value',
+]
+
+def parse_options():
+    parser = OptionParser()
+
+    parser.add_option(u"-H",
+                      u"--host",
+                      dest=u"host",
+                      help=u"Specify the PuppetDB host to query")
+
+    parser.add_option(u"-c",
+                      u"--cert",
+                      dest=u"cert",
+                      help=u"Specify the client cert to use when talking to PuppetDB")
+
+    parser.add_option(u"-k",
+                      u"--key",
+                      dest=u"key",
+                      help=u"Specify the client private key to use when talking to PuppetDB")
+
+    parser.add_option(u"-f",
+                      u"--filter",
+                      dest=u"fact_filter", default=None,
+                      help=u"Specify a Filter")
+
+    parser.add_option(u"-F",
+                      u"--fields",
+                      dest=u"fields",
+                      help=u"Specify fields to display :\n %s" % (u','.join(_VALID_FIELDS)))
+
+    parser.add_option(u"-o",
+                      u"--output-format",
+                      dest=u"format",
+                      help=u"Specify format to output")
+
+    (options, args) = parser.parse_args()
+    if options.format is None:
+        options.format = _VALID_OUTPUT_FORMATS[0]
+
+    if not options.format in _VALID_OUTPUT_FORMATS:
+        sys.exit(1)
+
+    # options.fields (handling)
+    if not options.fields is None:
+        options.fields = options.fields.split(',')
+        if not u'certname' in options.fields:
+            options.fields = [u'certname'] + options.fields
+    else:
+        options.fields = [u'certname']
+
+    if options.fact_filter:
+        m = re.match(r'^(~|)([^=]+)=(~|)(.*)$', options.fact_filter)
+        if not m:
+            print(u"Filter must be specified as [~]fact=[~]value. '%s' is not valid" % (options.fact_filter))
+            sys.exit(1)
+
+        (nop, name, vop, value) = m.groups()
+        if not nop:
+            nop = u'='
+        if not vop:
+            vop = u'='
+
+        options.fact_filter = {u'name': name, u'value': value, u'name_operator': nop, u'value_operator': vop}
+    else:
+        # Match everything by default
+        options.fact_filter = {u'name': '.', u'value': u'.', u'name_operator': u'~', u'value_operator': u'~'}
+
+    if len(args) > 0:
+        options.host_filter = args[0]
+    else:
+        options.host_filter = u'.'
+
+    return (options, args)
+
+def output(data, fields, format=u'tab', header=False):
+    """ Format the output in any of the defined ways
+    """
+    if len(data) == 0:
+        print(u"No Data Matches your search criteria.")
+        sys.exit(0)
+
+    if format == u'tab':
+        print(u'\t'.join(fields), file=sys.stderr)
+
+    elif format == u'csv':
+        print(u'"%s"' % u'","'.join(fields), file=sys.stderr)
+
+    for line in data:
+        if format == u'tab':
+            for f in fields:
+                print(u'%s\t' % line[f], end=u'')
+            print()
+
+        elif format == u'csv':
+            for f in fields:
+                print(u'"%s",' % line[f], end=u'')
+            print()
+
+def main():
+    (opts, args) = parse_options()
+
+    if sys.stdout.encoding is None:
+        sys.stdout = codecs.getwriter(locale.getpreferredencoding())(sys.stdout, 'strict')
+    if sys.stderr.encoding is None:
+        sys.stderr = codecs.getwriter(locale.getpreferredencoding())(sys.stderr, 'strict')
+
+    puppetdb = PuppetDB(host=opts.host, cert=opts.cert, key=opts.key)
+    query = u'["and",["~","certname","%s"],["%s","name","%s"],["%s","value","%s"]]' % (
+            opts.host_filter,
+            opts.fact_filter['name_operator'],
+            opts.fact_filter['name'],
+            opts.fact_filter['value_operator'],
+            opts.fact_filter['value'],
+        )
+
+    data = puppetdb.query_facts(query)
+    output(data, opts.fields, opts.format)
+
+if __name__ == u'__main__':
+    main()
+
+
